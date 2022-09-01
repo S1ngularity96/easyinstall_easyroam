@@ -1,12 +1,20 @@
 #!/bin/bash
 
 p12file=""
-outfile="./easyroam_certs"
-
+outfile="cert_easyroam.pem"
+outdir="$PWD/easyroam_certs"
 function help(){
     helpHeader
     printf "\n"
     helpBody
+}
+
+function printVars(){
+    format="%-10s %-20s \n"
+    printf "Current configuration:\n"
+    printf "$format" "p12:" "$p12file"
+    printf "$format" "outfile:" "$outfile"
+    printf "$format" "outdir:" "$outdir"
 }
 
 function helpHeader(){
@@ -19,7 +27,8 @@ function helpBody(){
     printf "Usage: easyroam.sh [option]\n"
     printf "Options:\n"
     printf "$formatOptions" "-p12 --p12file" "path to p12 file" "(required)"
-    printf "$formatOptions" "-o --output" "path to output file" "(optional)"
+    printf "$formatOptions" "-o --output" "name for merged certificate" "(optional, default=$outfile)"
+    printf "$formatOptions" "-d --directory" "path for certificates" "(optional, default=$outdir)"
 }
 
 function generateConfig(){
@@ -46,6 +55,7 @@ function checkRequired(){
     missed=0
     formatOptions="%-15s is required\n"
     if [[ -z $p12file ]]; then
+        printf $p12file
         printf "$formatOptions" "-p12 --p12file"
         missed=1
     fi
@@ -68,7 +78,10 @@ while [[ "$1" =~ ^- && ! "$1" == "--" ]]; do case $1 in
         shift; p12file=$1
         ;;
     -o | --out )
-        shift; $outfi=$1
+        shift; outfile=$1
+        ;;
+    -d | --directory )
+         shift; outdir=$1
     ;;
     esac; shift; done
     if [[ "$1" == '--' ]]; then shift; fi
@@ -78,15 +91,33 @@ checkRequired
 isValid=$?
 
 if [[ $isValid -eq 1 ]]; then
+    rm -rf $outdir
+    if [[ ! -e $outdir ]]; then
+        mkdir $outdir
+    fi    
 
-    if [[ ! -e $out ]]; then
-        mkdir $out
+    printVars
+    printf "Do you want to continue? (y) if yes \n"
+    read input
+    if [[ $input != "y" ]]; then
+        printf "Exit procedure\n"
+        exit
     fi
-    # client certificate
-    openssl pkcs12 -in $p12file -legacy -nokeys > $out/easyroam_client_cert.pem
-    #private certificate
-    openssl pkcs12 -legacy -in $p12file -nodes -nocerts | openssl rsa -aes256 -out $out/easyroam_client_key.pem
-    #root certificate
-    openssl pkcs12 -in $p12file -cacerts > $out/easyroam_root_ca.pem
 
+    client_cert="easyroam_client_cert.pem"
+    private_cert="easyroam_client_key.pem"
+    root_cert="easyroam_root_ca.pem"
+    certs=("$client_cert" "$private_cert" "$root_cert")
+
+    # client certificate
+    printf "Extracting client certifacte ... \n"
+    openssl pkcs12 -in $p12file -legacy -nokeys > $outdir/$client_cert
+    #private certificate
+    printf "Extracting private certificate ...\n"
+    openssl pkcs12 -legacy -in $p12file -nodes -nocerts | openssl rsa -aes256 -out $outdir/$private_cert
+    #root certificate
+    printf "Extracting root certificate ...\n"
+    openssl pkcs12 -in $p12file -cacerts > $outdir/$root_cert
+    printf "Certificates extracted ...\n"
+    printf "Merging certs $certs into one file ... \n"
 fi 
